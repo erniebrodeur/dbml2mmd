@@ -149,7 +149,7 @@ DEPENDENCIES
   pry-byebug
   pry-doc
   rake (~> 13.0)
-  rspec (~> 3.0)
+  rspec
   rspec-its
   rubocop (~> 1.21)
   rubocop-performance

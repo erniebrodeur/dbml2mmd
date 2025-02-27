@@ -3,10 +3,11 @@
 module Dbml2Mmd
   class Parser
     def self.parse(content)
-      # Use the dbml gem (required dependency)
-      parser = DBML::Parser.new
-      result = parser.parse(content)
+      # Use DBML::Parser.parse directly instead of instantiating
+      result = DBML::Parser.parse(content)
       convert_to_standard_format(result)
+    rescue StandardError => e
+      raise ParseError, "Failed to parse DBML: #{e.message}"
     end
 
     # Convert dbml gem output to standard format
@@ -19,7 +20,7 @@ module Dbml2Mmd
           {
             name: column.name,
             type: column.type,
-            attributes: column.settings&.join(',')
+            attributes: column.settings.is_a?(Array) ? column.settings.join(',') : column.settings.to_s
           }
         end
 

@@ -1,11 +1,12 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'ostruct'
 
 RSpec.describe Dbml2Mmd::Parser do
   describe '.parse' do
     subject(:parsed_result) { described_class.parse(dbml_content) }
-    
+
     let(:dbml_content) { 'Table users { id integer [pk] }' }
     let(:parser_double) { instance_double(DBML::Parser) }
     let(:dbml_result) do
@@ -26,8 +27,7 @@ RSpec.describe Dbml2Mmd::Parser do
     end
 
     before do
-      allow(DBML::Parser).to receive(:new).and_return(parser_double)
-      allow(parser_double).to receive(:parse).with(dbml_content).and_return(dbml_result)
+      allow(DBML::Parser).to receive(:parse).with(dbml_content).and_return(dbml_result)
     end
 
     it { is_expected.to be_a(Hash) }
@@ -127,7 +127,7 @@ RSpec.describe Dbml2Mmd::Parser do
 
       it 'preserves target table and field' do
         expect(standard_format[:refs][0][:to][:table]).to eq('posts')
-        expect(standard_format[:refs][0][:to][:field']).to eq('user_id')
+        expect(standard_format[:refs][0][:to][:field]).to eq('user_id')
       end
 
       it 'determines correct relationship type' do

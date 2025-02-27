@@ -76,6 +76,10 @@ module Dbml2Mmd
 
       # Save and return the full diagram
       @last_output = (header + [mermaid.join("\n")]).join("\n")
+    rescue Dbml2Mmd::ParseError => e
+      raise e
+    rescue StandardError => e
+      raise Dbml2Mmd::ParseError, "Failed to convert DBML: #{e.message}"
     end
 
     def output_html

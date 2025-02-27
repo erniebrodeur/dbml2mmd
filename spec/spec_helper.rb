@@ -2,6 +2,9 @@
 
 require 'simplecov'
 require 'simplecov-lcov'
+require 'ostruct'
+require 'bundler/setup'
+require 'dbml2mmd'
 
 SimpleCov::Formatter::LcovFormatter.config do |c|
   c.report_with_single_file = true
@@ -17,9 +20,6 @@ SimpleCov.start do
                                                        SimpleCov::Formatter::LcovFormatter
                                                      ])
 end
-
-require 'bundler/setup'
-require 'dbml2mmd'
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure

@@ -26,11 +26,11 @@ group :development do
 end
 
 group :development, :test do
+  gem 'rspec'
+  gem 'simplecov'
 end
 
 group :test do
-  gem 'rspec', '~> 3.0'
   gem 'rspec-its'
-  gem 'simplecov', require: false
   gem 'simplecov-lcov', require: false
 end
