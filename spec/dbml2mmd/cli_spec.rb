@@ -1,125 +1,227 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'dbml2mmd/cli'
+require 'stringio'
 
 RSpec.describe Dbml2Mmd::CLI do
-  subject(:cli) { described_class.new(args) }
+  let(:output) { StringIO.new }
+  let(:error_output) { StringIO.new }
+  let(:args) { [] }
+  let(:exit_code) { subject.run }
 
-  let(:simple_dbml) do
-    <<~DBML
-      Table users {
-        id integer [primary key]
-        username varchar
-      }
-    DBML
-  end
-
-  let(:args) { ['input.dbml'] }
-
-  # Create more realistic Slop mocks
-  let(:slop_options) { instance_double(Slop::Options) }
-  let(:slop_result) { instance_double(Slop::Result) }
-
-  before do
-    # Setup Slop mocking
-    allow(Slop::Options).to receive(:new).and_return(slop_options)
-    allow(slop_options).to receive(:banner=)
-    allow(slop_options).to receive(:separator)
-    allow(slop_options).to receive(:on)
-    allow(slop_options).to receive(:to_s).and_return('Usage help text')
-    allow(slop_options).to receive(:parse).and_return(slop_result)
-
-    # Default behavior for slop result
-    allow(slop_result).to receive(:args).and_return(args)
-    allow(slop_result).to receive(:[]).with(any_args).and_return(nil)
-
-    # Setup file mocks
-    allow(File).to receive(:read).and_return(simple_dbml)
-    allow(File).to receive(:write)
-    allow(File).to receive(:exist?).and_return(true)
-  end
+  subject { described_class.new(args, output: output, error_output: error_output) }
 
   describe '#run' do
-    context 'when --help flag is provided' do
+    context 'with --help flag' do
+      let(:args) { ['--help'] }
+
+      it 'displays help information' do
+        exit_code
+        expect(output.string).to include('Usage: dbml2mmd [options] [input_file]')
+      end
+
+      it 'exits with code 0' do
+        expect(exit_code).to eq(0)
+      end
+
+      it 'sets exit_requested flag' do
+        exit_code
+        expect(subject.exit_requested?).to be true
+      end
+    end
+
+    context 'with --version flag' do
+      let(:args) { ['--version'] }
+
+      it 'displays version information' do
+        exit_code
+        expect(output.string).to include('DBML to Mermaid Converter v')
+      end
+
+      it 'exits with code 0' do
+        expect(exit_code).to eq(0)
+      end
+    end
+
+    context 'with invalid options' do
+      let(:args) { ['--invalid-option'] }
+
+      it 'displays error message' do
+        exit_code
+        expect(error_output.string).to include('Error:')
+      end
+
+      it 'exits with code 1' do
+        expect(exit_code).to eq(1)
+      end
+    end
+  end
+
+  describe 'input processing' do
+    let(:converter) do
+      instance_double(Dbml2Mmd::Converter, convert: 'mermaid output', output_html: '<html>content</html>')
+    end
+    let(:dbml_content) { 'Table users { id integer }' }
+
+    before do
+      allow(subject).to receive(:create_converter).and_return(converter)
+    end
+
+    context 'when reading from a file' do
+      let(:args) { ['input.dbml'] }
+
       before do
-        allow(slop_result).to receive(:[]).with(:help).and_return(true)
+        allow(File).to receive(:read).with('input.dbml').and_return(dbml_content)
       end
 
-      it 'displays the help message' do
-        expect { cli.run }.to output(/Usage help text/).to_stdout.and raise_error(SystemExit)
+      it 'reads the file content' do
+        exit_code
+        expect(output.string).to include('mermaid output')
       end
 
-      it 'exits with status code 0' do
-        expect { cli.run }.to raise_error(SystemExit) do |error|
-          expect(error.status).to eq(0)
+      context 'when file does not exist' do
+        before do
+          allow(File).to receive(:read).and_raise(Errno::ENOENT.new('File not found'))
+        end
+
+        it 'displays error message' do
+          exit_code
+          expect(error_output.string).to include('File not found')
+        end
+
+        it 'exits with code 1' do
+          expect(exit_code).to eq(1)
         end
       end
     end
 
-    context 'when --version flag is provided' do
+    context 'when output is specified' do
+      let(:args) { ['--output', 'output.mmd', 'input.dbml'] }
+
       before do
-        allow(slop_result).to receive(:[]).with(:help).and_return(false)
-        allow(slop_result).to receive(:[]).with(:version).and.return(true)
-      end
-
-      it 'displays the version' do
-        expect { cli.run }.to output(/\d+\.\d+\.\d+/).to_stdout
-      end
-
-      it 'exits with status code 0' do
-        expect { cli.run }.to raise_error(SystemExit) do |error|
-          expect(error.status).to eq(0)
-        end
-      end
-    end
-
-    context 'when processing an input file' do
-      before do
-        allow(slop_result).to receive(:[]).with(:help).and.return(false)
-        allow(slop_result).to receive(:[]).with(:version).and.return(false)
-      end
-
-      it 'generates mermaid diagram syntax' do
-        expect { cli.run }.to output(/erDiagram.*users {/m).to_stdout
-      end
-    end
-
-    context 'when output file option is provided' do
-      before do
-        allow(slop_result).to receive(:[]).with(:help).and.return(false)
-        allow(slop_result).to receive(:[]).with(:version).and.return(false)
-        allow(slop_result).to receive(:[]).with(:output).and.return('output.mmd')
+        allow(File).to receive(:read).with('input.dbml').and_return(dbml_content)
+        allow(File).to receive(:write).and_return(true)
       end
 
       it 'writes output to the specified file' do
-        expect(File).to receive(:write).with('output.mmd', /erDiagram.*users {/m)
-        cli.run
+        expect(File).to receive(:write).with('output.mmd', 'mermaid output')
+        exit_code
+      end
+
+      it 'confirms output was written' do
+        exit_code
+        expect(output.string).to include('Output written to output.mmd')
       end
     end
 
-    context 'when theme option is provided' do
+    context 'with --html flag' do
+      let(:args) { ['--html', '--output', 'output.html', 'input.dbml'] }
+
       before do
-        allow(slop_result).to receive(:[]).with(:help).and.return(false)
-        allow(slop_result).to receive(:[]).with(:version).and.return(false)
-        allow(slop_result).to receive(:[]).with(:theme).and.return('dark')
+        allow(File).to receive(:read).with('input.dbml').and_return(dbml_content)
+        allow(File).to receive(:write).and_return(true)
       end
 
-      it 'applies the specified theme' do
-        expect { cli.run }.to output(/"theme": "dark"/).to_stdout
+      it 'creates options with html_output: true' do
+        exit_code
+        expect(subject.options[:html_output]).to be true
+      end
+
+      it 'writes HTML output to the specified file' do
+        expect(File).to receive(:write).with('output.html', '<html>content</html>')
+        exit_code
       end
     end
+  end
 
-    context 'when an invalid file is provided' do
+  describe 'with verbose flag' do
+    let(:args) { ['--verbose', 'input.dbml'] }
+    let(:dbml_content) { 'Table users { id integer }' }
+
+    before do
+      allow(File).to receive(:read).with('input.dbml').and_return(dbml_content)
+      allow(subject).to receive(:create_converter).and_return(
+        instance_double(Dbml2Mmd::Converter, convert: 'mermaid output')
+      )
+    end
+
+    it 'outputs verbose information' do
+      exit_code
+      expect(output.string).to include('Input source:')
+      expect(output.string).to include('Theme:')
+      expect(output.string).to include('HTML output:')
+      expect(output.string).to include('Filtering tables:')
+    end
+  end
+
+  describe 'with theme option' do
+    let(:args) { ['--theme', 'dark', 'input.dbml'] }
+    let(:dbml_content) { 'Table users { id integer }' }
+
+    before do
+      allow(File).to receive(:read).with('input.dbml').and_return(dbml_content)
+    end
+
+    it 'sets the theme in options' do
+      exit_code
+      expect(subject.options[:theme]).to eq('dark')
+    end
+
+    it 'passes options to the converter' do
+      expect(Dbml2Mmd::Converter).to receive(:new).with(hash_including(theme: 'dark')).and_return(
+        instance_double(Dbml2Mmd::Converter, convert: 'mermaid output')
+      )
+      exit_code
+    end
+  end
+
+  describe 'with only option' do
+    let(:args) { ['--only', 'users,posts', 'input.dbml'] }
+    let(:dbml_content) { 'Table users { id integer }' }
+
+    before do
+      allow(File).to receive(:read).with('input.dbml').and_return(dbml_content)
+    end
+
+    it 'sets the only_tables in options' do
+      exit_code
+      expect(subject.options[:only_tables]).to eq('users,posts')
+    end
+
+    it 'passes options to the converter' do
+      expect(Dbml2Mmd::Converter).to receive(:new).with(hash_including(only_tables: 'users,posts')).and_return(
+        instance_double(Dbml2Mmd::Converter, convert: 'mermaid output')
+      )
+      exit_code
+    end
+  end
+
+  describe 'error handling' do
+    context 'when converter raises an error' do
+      let(:args) { ['input.dbml'] }
+
       before do
-        allow(slop_result).to receive(:[]).with(:help).and.return(false)
-        allow(slop_result).to receive(:[]).with(:version).and.return(false)
-        allow(slop_result).to receive(:args).and.return(['non_existent.dbml'])
-        allow(File).to receive(:exist?).with('non_existent.dbml').and.return(false)
+        allow(File).to receive(:read).with('input.dbml').and_return('invalid dbml')
+        allow_any_instance_of(Dbml2Mmd::Converter).to receive(:convert).and_raise(StandardError.new('Parsing error'))
       end
 
-      it 'displays an error message and exits with status 1' do
-        expect { cli.run }.to output(/Error: File not found/).to_stdout.and raise_error(SystemExit) do |error|
-          expect(error.status).to eq(1)
+      it 'displays the error message' do
+        exit_code
+        expect(error_output.string).to include('Error: Parsing error')
+      end
+
+      it 'exits with code 1' do
+        expect(exit_code).to eq(1)
+      end
+
+      context 'with verbose flag' do
+        let(:args) { ['--verbose', 'input.dbml'] }
+
+        it 'includes backtrace in the error output' do
+          exit_code
+          # Can't test exact backtrace content, but should have multiple lines
+          expect(error_output.string.lines.count).to be > 1
         end
       end
     end

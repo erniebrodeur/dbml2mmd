@@ -1,26 +1,35 @@
 # frozen_string_literal: true
 
-require 'slop'
-require 'dbml2mmd/version'
-
 module Dbml2Mmd
   class CLI
-    def initialize(args)
+    attr_reader :options, :opts, :exit_code
+
+    def initialize(args, output: $stdout, error_output: $stderr)
       @args = args
+      @output = output
+      @error_output = error_output
+      @exit_requested = false
+      @exit_code = 0
     end
 
     def run
       parse_options
-      process_input
+      return @exit_code if @exit_requested
+
+      result = process_input
+      output_result(result)
+      @exit_code
     rescue Slop::Error => e
-      puts "Error: #{e.message}"
-      puts @opts
-      exit 1
+      handle_error("Error: #{e.message}", show_opts: true)
+      @exit_code
     rescue StandardError => e
-      puts "Error: #{e.message}"
-      puts e.backtrace if @options&.verbose?
-      puts @opts if @opts
-      exit 1
+      handle_error("Error: #{e.message}", backtrace: e.backtrace, show_opts: true)
+      @exit_code
+    end
+
+    # For testing purposes
+    def exit_requested?
+      @exit_requested
     end
 
     private
@@ -37,8 +46,10 @@ module Dbml2Mmd
       @opts.string '--only', 'Only include specific tables (comma-separated list)'
       @opts.bool '-v', '--verbose', 'Enable verbose output'
       @opts.on '--version', 'Print the version' do
-        puts "DBML to Mermaid Converter v#{Dbml2Mmd::VERSION}"
-        exit
+        @output.puts "DBML to Mermaid Converter v#{Dbml2Mmd::VERSION}"
+        @exit_requested = true
+        @exit_code = 0
+        return
       end
 
       @opts.separator "\nExamples:"
@@ -56,49 +67,82 @@ module Dbml2Mmd
         theme: @options_parsed[:theme],
         html_output: @options_parsed[:html],
         only_tables: @options_parsed[:only],
-        verbose: @options_parsed[:verbose]
+        verbose: @options_parsed[:verbose],
+        output: @options_parsed[:output] # Add output to options hash
       }
 
       # Show help by default when no arguments are provided
       return unless (@args.empty? && $stdin.tty?) || @options_parsed.help?
 
-      puts @opts
-      exit
+      @output.puts @opts
+      @exit_requested = true
+      @exit_code = 0
     end
 
     def process_input
       # Get input from file or stdin
-      input = if @args.empty?
-                ARGF.read
-              else
-                begin
-                  File.read(@args[0])
-                rescue Errno::ENOENT
-                  puts "Error: File not found: #{@args[0]}"
-                  exit 1
-                end
-              end
+      input = get_input
+      return nil unless input
 
       # Print verbose info if enabled
-      if @options[:verbose]
-        puts "Input source: #{@args.empty? ? 'STDIN' : @args[0]}"
-        puts "Theme: #{@options[:theme]}"
-        puts "HTML output: #{@options[:html]}"
-        puts "Filtering tables: #{@options[:only] || 'No'}"
-      end
+      output_verbose_info if @options[:verbose]
 
       # Convert DBML to Mermaid
-      converter = Dbml2Mmd::Converter.new(@options)
-      mermaid = converter.convert(input)
+      converter = create_converter
+      result = converter.convert(input)
 
-      # Output result
-      if @opts[:output]
-        output = @opts[:html] ? converter.output_html : mermaid
-        File.write(@opts[:output], output)
-        puts "Output written to #{@opts[:output]}"
+      {
+        mermaid: result,
+        converter: converter
+      }
+    end
+
+    def get_input
+      if input_file
+        begin
+          File.read(input_file)
+        rescue Errno::ENOENT => e
+          handle_error("Error: #{e.message}")
+          nil
+        end
       else
-        puts mermaid
+        $stdin.tty? ? nil : $stdin.read
       end
+    end
+
+    def input_file
+      # Find the last argument that isn't an option
+      @args.reject { |arg| arg.start_with?('-') }.last
+    end
+
+    def create_converter
+      Dbml2Mmd::Converter.new(@options)
+    end
+
+    def output_verbose_info
+      @output.puts "Input source: #{@args.empty? ? 'STDIN' : @args[0]}"
+      @output.puts "Theme: #{@options[:theme]}"
+      @output.puts "HTML output: #{@options[:html_output]}"
+      @output.puts "Filtering tables: #{@options[:only_tables] || 'No'}"
+    end
+
+    def output_result(result)
+      return unless result
+
+      if @options[:output]
+        output_content = @options[:html_output] ? result[:converter].output_html : result[:mermaid]
+        File.write(@options[:output], output_content)
+        @output.puts "Output written to #{@options[:output]}"
+      else
+        @output.puts result[:mermaid]
+      end
+    end
+
+    def handle_error(message, backtrace: nil, show_opts: false)
+      @error_output.puts message
+      @error_output.puts backtrace if backtrace && @options&.fetch(:verbose, false)
+      @error_output.puts @opts if show_opts && @opts
+      @exit_code = 1
     end
   end
 end

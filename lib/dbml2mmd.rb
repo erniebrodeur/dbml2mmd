@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'dbml'
+require 'slop'
 
 require 'dbml2mmd/version'
 require 'dbml2mmd/parser'
