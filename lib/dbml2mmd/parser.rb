@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'dbml'
-
 module Dbml2Mmd
   class Parser
     def self.parse(content)
