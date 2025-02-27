@@ -8,6 +8,10 @@ dbml2mmd transforms your DBML schema definitions into Mermaid Markdown diagrams,
 
 ## Installation
 
+```bash
+gem install dbml2mmd
+```
+
 ## Usage
 
 ### Basic Usage
