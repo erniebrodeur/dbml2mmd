@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
-require_relative "dbml2mmd/version"
+require "dbml2mmd/version"
+require "dbml2mmd/parser"
+require "dbml2mmd/converter"
+require "dbml2mmd/cli"
 
-module Dbml2mmd
+module Dbml2Mmd
   class Error < StandardError; end
-  # Your code goes here...
 end
