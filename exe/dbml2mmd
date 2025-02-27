@@ -1,3 +1,381 @@
 #!/usr/bin/env ruby
 
 require "dbml2mmd"
+#!/usr/bin/env ruby
+
+require 'json'
+begin
+  require 'slop'
+rescue LoadError
+  puts "Error: slop gem is required for CLI handling."
+  puts "Please install it using: gem install slop"
+  exit 1
+end
+
+# Try to load dbml gem if available
+USING_GEM = begin
+  require 'dbml'
+  true
+rescue LoadError
+  false
+end
+
+class DBMLParser
+  def self.parse(content)
+    if USING_GEM
+      # Use the dbml gem if available
+      parser = DBML::Parser.new
+      result = parser.parse(content)
+      convert_to_standard_format(result)
+    else
+      # Simple custom DBML parser implementation
+      parse_dbml(content)
+    end
+  end
+  
+  # Convert dbml gem output to standard format
+  def self.convert_to_standard_format(result)
+    standard = { tables: [], refs: [] }
+    
+    # Process tables
+    result.tables.each do |table|
+      fields = table.columns.map do |column|
+        {
+          name: column.name,
+          type: column.type,
+          attributes: column.settings&.join(',')
+        }
+      end
+      
+      standard[:tables] << {
+        name: table.name,
+        fields: fields
+      }
+    end
+    
+    # Process references
+    result.refs.each do |ref|
+      endpoint1 = ref.endpoints.first
+      endpoint2 = ref.endpoints.last
+      
+      standard[:refs] << {
+        from: { table: endpoint1.tableName, field: endpoint1.columnName },
+        to: { table: endpoint2.tableName, field: endpoint2.columnName },
+        type: determine_relationship_type(ref)
+      }
+    end
+    
+    standard
+  end
+  
+  # Determine relationship type from dbml gem reference
+  def self.determine_relationship_type(ref)
+    endpoint1 = ref.endpoints.first
+    endpoint2 = ref.endpoints.last
+    
+    if endpoint1.relation == '1' && endpoint2.relation == '1'
+      'one_to_one'
+    elsif endpoint1.relation == '1' && endpoint2.relation == '*'
+      'one_to_many'
+    elsif endpoint1.relation == '*' && endpoint2.relation == '1'
+      'many_to_one'
+    elsif endpoint1.relation == '*' && endpoint2.relation == '*'
+      'many_to_many'
+    else
+      'one_to_one' # Default
+    end
+  end
+
+  # Simple DBML parser implementation
+  def self.parse_dbml(content)
+    result = { tables: [], refs: [] }
+    
+    # Extract tables
+    table_blocks = content.scan(/Table\s+(\w+)\s*\{([^}]*)\}/m)
+    table_blocks.each do |table_name, table_content|
+      fields = []
+      field_lines = table_content.strip.split("\n")
+      field_lines.each do |line|
+        line = line.strip
+        next if line.empty?
+        
+        # Basic field parsing
+        if line =~ /^(\w+)\s+(\w+)(?:\s+\[(.*)\])?/
+          field_name = $1
+          field_type = $2
+          attributes = $3
+          
+          fields << {
+            name: field_name,
+            type: field_type,
+            attributes: attributes
+          }
+        end
+      end
+      
+      result[:tables] << {
+        name: table_name,
+        fields: fields
+      }
+    end
+    
+    # Extract references
+    ref_lines = content.scan(/Ref:\s*(.*?)$/m)
+    ref_lines.each do |ref_line|
+      ref_line = ref_line[0].strip
+      if ref_line =~ /(\w+)\.(\w+)\s*([<>])\s*(\w+)\.(\w+)/
+        from_table = $1
+        from_field = $2
+        type_symbol = $3
+        to_table = $4
+        to_field = $5
+        
+        # Determine relationship type based on symbol
+        rel_type = case type_symbol
+                   when '>' then 'many_to_one'
+                   when '<' then 'one_to_many'
+                   else 'one_to_one'
+                   end
+        
+        result[:refs] << {
+          from: { table: from_table, field: from_field },
+          to: { table: to_table, field: to_field },
+          type: rel_type
+        }
+      end
+    end
+    
+    result
+  end
+end
+
+class Dbml2Mermaid
+  def initialize(options = {})
+    @options = options
+    @theme = options[:theme] || 'default'
+  end
+
+  def convert(dbml_content)
+    # Parse DBML content
+    dbml = DBMLParser.parse(dbml_content)
+    tables = dbml[:tables] || []
+    refs = dbml[:refs] || []
+    
+    # Filter tables if specified
+    if @options[:only_tables] && !@options[:only_tables].empty?
+      table_list = @options[:only_tables].split(',').map(&:strip)
+      tables = tables.select { |table| table_list.include?(table[:name]) }
+      # Only keep references between included tables
+      refs = refs.select do |ref| 
+        table_list.include?(ref[:from][:table]) && table_list.include?(ref[:to][:table])
+      end
+    end
+
+    # Generate Mermaid ERD
+    mermaid = ["erDiagram"]
+    
+    # Add tables and their fields
+    tables.each do |table|
+      table_fields = []
+      table[:fields].each do |field|
+        field_type = field[:type].to_s.gsub(/\s+/, "")
+        
+        # Check for primary key attribute and format appropriately
+        is_pk = field[:attributes]&.to_s&.include?('primary key')
+        is_fk = refs.any? { |ref| ref[:from][:table] == table[:name] && ref[:from][:field] == field[:name] }
+        
+        field_annotation = []
+        field_annotation << "PK" if is_pk
+        field_annotation << "FK" if is_fk
+        
+        annotation_str = field_annotation.empty? ? "" : " #{field_annotation.join(',')}"
+        
+        # Format the field with proper spacing
+        table_fields << "    #{field[:name]} #{field_type}#{annotation_str}"
+      end
+      
+      mermaid << "  #{table[:name]} {"
+      mermaid.concat(table_fields)
+      mermaid << "  }"
+    end
+    
+    # Add relationships with proper labels
+    refs.each do |ref|
+      from_table = ref[:from][:table]
+      to_table = ref[:to][:table]
+      relationship_type = get_relationship_type(ref[:type])
+      
+      # Create a more descriptive label if available
+      label = "\"#{ref[:from][:field]} -> #{ref[:to][:field]}\""
+      if ref[:name]
+        label = "\"#{ref[:name]}: #{ref[:from][:field]} -> #{ref[:to][:field]}\""
+      end
+      
+      mermaid << "  #{from_table} #{relationship_type} #{to_table} : #{label}"
+    end
+    
+    # Add a header comment with generation info and theme
+    theme_config = get_theme_config(@theme)
+    header = [
+      "%%{init: #{theme_config}}%%",
+      "% Generated by dbml2mmd on #{Time.now.strftime('%Y-%m-%d %H:%M:%S')}",
+      "% https://mermaid.js.org/syntax/entityRelationshipDiagram.html"
+    ]
+    
+    # Return the full diagram
+    (header + [mermaid.join("\n")]).join("\n")
+  end
+  
+  def output_html
+    return nil unless @options[:html_output]
+    
+    <<-HTML
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Database Diagram</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    .mermaid { margin: 20px auto; }
+  </style>
+</head>
+<body>
+  <h1>Database Diagram</h1>
+  <p>Generated on #{Time.now.strftime('%Y-%m-%d %H:%M:%S')}</p>
+  <div class="mermaid">
+#{@last_output}
+  </div>
+  <script>
+    mermaid.initialize({ startOnLoad: true });
+  </script>
+</body>
+</html>
+    HTML
+  end
+  
+  private
+  
+  def get_relationship_type(type)
+    case type
+    when 'one_to_one'
+      "||--||"
+    when 'one_to_many'
+      "||--o{"
+    when 'many_to_one'
+      "}o--||"
+    when 'many_to_many'
+      "}o--o{"
+    else
+      "--"
+    end
+  end
+  
+  def get_theme_config(theme)
+    case theme
+    when 'dark'
+      "{'theme': 'dark', 'themeVariables': { 'primaryColor': '#2A2A2A', 'primaryBorderColor': '#777', 'primaryTextColor': '#DDD' }}"
+    when 'neutral'
+      "{'theme': 'neutral', 'themeVariables': { 'primaryColor': '#f4f4f4', 'primaryBorderColor': '#888', 'primaryTextColor': '#333' }}"
+    when 'forest'
+      "{'theme': 'forest', 'themeVariables': { 'primaryColor': '#e6f5e6', 'primaryBorderColor': '#4d994d', 'primaryTextColor': '#1a331a' }}"
+    else # default theme
+      "{'theme': 'default', 'themeVariables': { 'primaryColor': '#f4f4f4', 'primaryBorderColor': '#aaa', 'primaryTextColor': '#333' }}"
+    end
+  end
+end
+
+# Parse command-line arguments with Slop
+begin
+  opts = Slop.parse do |o|
+    o.banner = "Usage: dbml2mmd [options] [input_file]"
+    
+    o.string '-o', '--output', 'Output to file instead of stdout'
+    o.bool '-h', '--help', 'Show this help message', default: false
+    o.string '-t', '--theme', 'Mermaid theme (default, dark, neutral, forest)', default: 'default'
+    o.bool '--html', 'Generate HTML output with embedded Mermaid viewer', default: false
+    o.string '--only', 'Only include specific tables (comma-separated list)'
+    o.bool '-v', '--verbose', 'Enable verbose output', default: false
+    
+    o.on '--version', 'Print the version' do
+      puts "DBML to Mermaid Converter v0.1.0"
+      exit
+    end
+  end
+
+  # Show help by default when no arguments are provided
+  if (ARGV.empty? && STDIN.tty?) || opts.help?
+    puts opts
+    puts "\nExamples:"
+    puts "  dbml2mmd input.dbml                    # Convert file and output to stdout"
+    puts "  dbml2mmd -o output.mmd input.dbml      # Convert file and save to output.mmd"
+    puts "  dbml2mmd --html -o output.html input.dbml  # Generate HTML with Mermaid viewer"
+    puts "  dbml2mmd --theme dark input.dbml       # Use dark theme for diagram"
+    puts "  dbml2mmd --only users,posts input.dbml # Only include specific tables"
+    puts "  cat input.dbml | dbml2mmd              # Read from stdin and output to stdout"
+    
+    if USING_GEM
+      puts "\nUsing dbml gem for DBML parsing."
+    else
+      puts "\nUsing built-in DBML parser (limited functionality)."
+      puts "For full DBML support, install the dbml gem: gem install dbml"
+    end
+    
+    exit
+  end
+  
+  # Get input from file or stdin
+  input = nil
+  if ARGV.empty?
+    input = ARGF.read
+  else
+    input = File.read(ARGV[0])
+  rescue Errno::ENOENT
+    puts "Error: File not found: #{ARGV[0]}"
+    exit 1
+  end
+  
+  # Setup converter options
+  converter_options = {
+    theme: opts[:theme],
+    html_output: opts[:html],
+    only_tables: opts[:only],
+    verbose: opts[:verbose]
+  }
+  
+  # Print verbose info if enabled
+  if opts[:verbose]
+    puts "Input source: #{ARGV.empty? ? 'STDIN' : ARGV[0]}"
+    puts "Using DBML gem: #{USING_GEM}"
+    puts "Theme: #{opts[:theme]}"
+    puts "HTML output: #{opts[:html]}"
+    puts "Filtering tables: #{opts[:only] ? opts[:only] : 'No'}"
+  end
+  
+  # Convert DBML to Mermaid
+  converter = Dbml2Mermaid.new(converter_options)
+  mermaid = converter.convert(input)
+  converter.instance_variable_set(:@last_output, mermaid)
+  
+  # Output result
+  if opts[:output]
+    if opts[:html]
+      File.write(opts[:output], converter.output_html)
+    else
+      File.write(opts[:output], mermaid)
+    end
+    puts "Output written to #{opts[:output]}"
+  else
+    puts mermaid
+  end
+  
+rescue Slop::Error => e
+  puts "Error: #{e.message}"
+  puts opts
+  exit 1
+rescue => e
+  puts "Error: #{e.message}"
+  puts opts
+  exit 1
+end
