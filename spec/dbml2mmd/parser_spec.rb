@@ -4,89 +4,191 @@ require 'spec_helper'
 
 RSpec.describe Dbml2Mmd::Parser do
   describe '.parse' do
-    let(:simple_dbml) do
-      <<~DBML
-        Table users {
-          id integer [primary key]
-          username varchar
-          email varchar
-        }
-
-        Table posts {
-          id integer [primary key]
-          title varchar
-          content text
-          user_id integer
-        }
-
-        Ref: posts.user_id > users.id
-      DBML
+    subject(:parsed_result) { described_class.parse(dbml_content) }
+    
+    let(:dbml_content) { 'Table users { id integer [pk] }' }
+    let(:parser_double) { instance_double(DBML::Parser) }
+    let(:dbml_result) do
+      instance_double('DBML::Result',
+                      tables: [table_double],
+                      refs: [])
+    end
+    let(:table_double) do
+      instance_double('DBML::Table',
+                      name: 'users',
+                      columns: [column_double])
+    end
+    let(:column_double) do
+      instance_double('DBML::Column',
+                      name: 'id',
+                      type: 'integer',
+                      settings: ['pk'])
     end
 
-    it 'parses DBML content into a standard format' do
-      result = described_class.parse(simple_dbml)
-
-      # Check structure
-      expect(result).to be_a(Hash)
-      expect(result).to have_key(:tables)
-      expect(result).to have_key(:refs)
-
-      # Check tables
-      expect(result[:tables].size).to eq(2)
-
-      users_table = result[:tables].find { |t| t[:name] == 'users' }
-      expect(users_table).to be_a(Hash)
-      expect(users_table[:fields].size).to eq(3)
-
-      # Check fields
-      id_field = users_table[:fields].find { |f| f[:name] == 'id' }
-      expect(id_field[:type]).to eq('integer')
-      expect(id_field[:attributes]).to include('primary key')
-
-      # Check references
-      expect(result[:refs].size).to eq(1)
-      ref = result[:refs].first
-      expect(ref[:from][:table]).to eq('posts')
-      expect(ref[:from][:field]).to eq('user_id')
-      expect(ref[:to][:table]).to eq('users')
-      expect(ref[:to][:field]).to eq('id')
+    before do
+      allow(DBML::Parser).to receive(:new).and_return(parser_double)
+      allow(parser_double).to receive(:parse).with(dbml_content).and_return(dbml_result)
     end
 
-    context 'with different relationship types' do
-      let(:relationship_dbml) do
-        <<~DBML
-          Table users {
-            id integer [primary key]
-          }
+    it { is_expected.to be_a(Hash) }
 
-          Table posts {
-            id integer [primary key]
-            user_id integer
-          }
+    it 'contains tables array' do
+      expect(parsed_result[:tables]).to be_an(Array)
+    end
 
-          Table categories {
-            id integer [primary key]
-          }
+    it 'contains references array' do
+      expect(parsed_result[:refs]).to be_an(Array)
+    end
 
-          Table post_categories {
-            post_id integer
-            category_id integer
-          }
-
-          Ref: posts.user_id > users.id // one-to-many
-          Ref: post_categories.post_id <> posts.id // many-to-many
-        DBML
+    context 'when converting to standard format' do
+      it 'preserves table name' do
+        expect(parsed_result[:tables].first[:name]).to eq('users')
       end
 
-      it 'correctly determines relationship types' do
-        result = described_class.parse(relationship_dbml)
-
-        one_to_many_rel = result[:refs].find { |r| r[:from][:field] == 'user_id' }
-        expect(one_to_many_rel[:type]).to eq('many_to_one')
-
-        many_to_many_rel = result[:refs].find { |r| r[:from][:field] == 'post_id' }
-        expect(many_to_many_rel[:type]).to eq('many_to_many')
+      it 'preserves field name' do
+        expect(parsed_result[:tables].first[:fields].first[:name]).to eq('id')
       end
+
+      it 'preserves field type' do
+        expect(parsed_result[:tables].first[:fields].first[:type]).to eq('integer')
+      end
+
+      it 'preserves field attributes' do
+        expect(parsed_result[:tables].first[:fields].first[:attributes]).to eq('pk')
+      end
+    end
+  end
+
+  describe '.convert_to_standard_format' do
+    subject(:standard_format) { described_class.convert_to_standard_format(dbml_result) }
+
+    let(:dbml_result) do
+      OpenStruct.new(
+        tables: [users_table, posts_table],
+        refs: [user_posts_ref]
+      )
+    end
+    let(:users_table) do
+      OpenStruct.new(
+        name: 'users',
+        columns: [
+          OpenStruct.new(name: 'id', type: 'integer', settings: ['pk']),
+          OpenStruct.new(name: 'email', type: 'varchar', settings: ['unique'])
+        ]
+      )
+    end
+    let(:posts_table) do
+      OpenStruct.new(
+        name: 'posts',
+        columns: [
+          OpenStruct.new(name: 'id', type: 'integer', settings: ['pk']),
+          OpenStruct.new(name: 'user_id', type: 'integer', settings: [])
+        ]
+      )
+    end
+    let(:user_posts_ref) do
+      OpenStruct.new(
+        endpoints: [
+          OpenStruct.new(tableName: 'users', columnName: 'id', relation: '1'),
+          OpenStruct.new(tableName: 'posts', columnName: 'user_id', relation: '*')
+        ]
+      )
+    end
+
+    context 'when converting tables' do
+      it 'includes correct number of tables' do
+        expect(standard_format[:tables].size).to eq(2)
+      end
+
+      it 'preserves table names' do
+        expect(standard_format[:tables][0][:name]).to eq('users')
+      end
+
+      it 'includes all fields for each table' do
+        expect(standard_format[:tables][0][:fields].size).to eq(2)
+      end
+
+      it 'preserves field attributes' do
+        expect(standard_format[:tables][0][:fields][0][:name]).to eq('id')
+        expect(standard_format[:tables][0][:fields][0][:type]).to eq('integer')
+        expect(standard_format[:tables][0][:fields][0][:attributes]).to eq('pk')
+      end
+    end
+
+    context 'when converting references' do
+      it 'includes correct number of references' do
+        expect(standard_format[:refs].size).to eq(1)
+      end
+
+      it 'preserves source table and field' do
+        expect(standard_format[:refs][0][:from][:table]).to eq('users')
+        expect(standard_format[:refs][0][:from][:field]).to eq('id')
+      end
+
+      it 'preserves target table and field' do
+        expect(standard_format[:refs][0][:to][:table]).to eq('posts')
+        expect(standard_format[:refs][0][:to][:field']).to eq('user_id')
+      end
+
+      it 'determines correct relationship type' do
+        expect(standard_format[:refs][0][:type]).to eq('one_to_many')
+      end
+    end
+  end
+
+  describe '.determine_relationship_type' do
+    subject(:relationship_type) { described_class.determine_relationship_type(reference) }
+
+    context 'with one-to-one relationship' do
+      let(:reference) do
+        OpenStruct.new(
+          endpoints: [
+            OpenStruct.new(relation: '1'),
+            OpenStruct.new(relation: '1')
+          ]
+        )
+      end
+
+      it { is_expected.to eq('one_to_one') }
+    end
+
+    context 'with one-to-many relationship' do
+      let(:reference) do
+        OpenStruct.new(
+          endpoints: [
+            OpenStruct.new(relation: '1'),
+            OpenStruct.new(relation: '*')
+          ]
+        )
+      end
+
+      it { is_expected.to eq('one_to_many') }
+    end
+
+    context 'with many-to-one relationship' do
+      let(:reference) do
+        OpenStruct.new(
+          endpoints: [
+            OpenStruct.new(relation: '*'),
+            OpenStruct.new(relation: '1')
+          ]
+        )
+      end
+
+      it { is_expected.to eq('many_to_one') }
+    end
+
+    context 'with many-to-many relationship' do
+      let(:reference) do
+        OpenStruct.new(
+          endpoints: [
+            OpenStruct.new(relation: '*'),
+            OpenStruct.new(relation: '*')
+          ]
+        )
+      end
+
+      it { is_expected.to eq('many_to_many') }
     end
   end
 end
