@@ -24,45 +24,44 @@ module Dbml2Mmd
     private
 
     def parse_options
-      @opts = Slop.parse(@args) do |o|
-        o.banner = "Usage: dbml2mmd [options] [input_file]"
-        
-        o.string '-o', '--output', 'Output to file instead of stdout'
-        o.bool '-h', '--help', 'Show this help message', default: false
-        o.string '-t', '--theme', 'Mermaid theme (default, dark, neutral, forest)', default: 'default'
-        o.bool '--html', 'Generate HTML output with embedded Mermaid viewer', default: false
-        o.string '--only', 'Only include specific tables (comma-separated list)'
-        o.bool '-v', '--verbose', 'Enable verbose output', default: false
-        
-        o.on '--version', 'Print the version' do
-          puts "DBML to Mermaid Converter v#{Dbml2Mmd::VERSION}"
-          exit
-        end
+      @opts = Slop::Options.new
+      @opts.banner = "Usage: dbml2mmd [options] [input_file]"
+      
+      @opts.separator "\nOptions:"
+      @opts.string '-o', '--output', 'Output to file instead of stdout'
+      @opts.bool '-h', '--help', 'Show this help message'
+      @opts.string '-t', '--theme', 'Mermaid theme (default, dark, neutral, forest)', default: 'default'
+      @opts.bool '--html', 'Generate HTML output with embedded Mermaid viewer'
+      @opts.string '--only', 'Only include specific tables (comma-separated list)'
+      @opts.bool '-v', '--verbose', 'Enable verbose output'
+      @opts.on '--version', 'Print the version' do
+        puts "DBML to Mermaid Converter v#{Dbml2Mmd::VERSION}"
+        exit
       end
       
+      @opts.separator "\nExamples:"
+      @opts.separator "  dbml2mmd input.dbml                    # Convert file and output to stdout"
+      @opts.separator "  dbml2mmd -o output.mmd input.dbml      # Convert file and save to output.mmd" 
+      @opts.separator "  dbml2mmd --html -o output.html input.dbml  # Generate HTML with Mermaid viewer"
+      @opts.separator "  dbml2mmd --theme dark input.dbml       # Use dark theme for diagram"
+      @opts.separator "  dbml2mmd --only users,posts input.dbml # Only include specific tables"
+      @opts.separator "  cat input.dbml | dbml2mmd              # Read from stdin and output to stdout"
+      
+      parser = Slop::Parser.new(@opts)
+      @options_parsed = parser.parse(@args)
+      
       @options = {
-        theme: @opts[:theme],
-        html_output: @opts[:html],
-        only_tables: @opts[:only],
-        verbose: @opts[:verbose]
+        theme: @options_parsed[:theme],
+        html_output: @options_parsed[:html],
+        only_tables: @options_parsed[:only],
+        verbose: @options_parsed[:verbose]
       }
 
       # Show help by default when no arguments are provided
-      if (@args.empty? && STDIN.tty?) || @opts.help?
-        show_help
+      if (@args.empty? && STDIN.tty?) || @options_parsed.help?
+        puts @opts
         exit
       end
-    end
-    
-    def show_help
-      puts @opts
-      puts "\nExamples:"
-      puts "  dbml2mmd input.dbml                    # Convert file and output to stdout"
-      puts "  dbml2mmd -o output.mmd input.dbml      # Convert file and save to output.mmd"
-      puts "  dbml2mmd --html -o output.html input.dbml  # Generate HTML with Mermaid viewer"
-      puts "  dbml2mmd --theme dark input.dbml       # Use dark theme for diagram"
-      puts "  dbml2mmd --only users,posts input.dbml # Only include specific tables"
-      puts "  cat input.dbml | dbml2mmd              # Read from stdin and output to stdout"
     end
 
     def process_input
