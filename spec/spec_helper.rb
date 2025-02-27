@@ -2,7 +2,6 @@
 
 require 'simplecov'
 require 'simplecov-lcov'
-require 'ostruct'
 require 'bundler/setup'
 require 'dbml2mmd'
 

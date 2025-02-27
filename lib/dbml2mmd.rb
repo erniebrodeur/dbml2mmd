@@ -1,16 +1,14 @@
 # frozen_string_literal: true
 
-require_relative 'dbml2mmd/version'
-require_relative 'dbml2mmd/models/schema'
-require_relative 'dbml2mmd/models/table'
-require_relative 'dbml2mmd/models/column'
-require_relative 'dbml2mmd/models/relationship'
-require_relative 'dbml2mmd/mermaid_formatter'
-require_relative 'dbml2mmd/parser'
+require 'dbml'
+require 'slop'
 
-# Main module for the dbml2mmd gem.
-# This file loads all sub-components so
-# users can simply require "dbml2mmd".
-module Dbml2mmd
-  # (Additional gem-wide code or helper methods can go here if needed.)
+module Dbml2Mmd
+  class Error < StandardError; end
+  class ParseError < Error; end
 end
+
+require 'dbml2mmd/version'
+require 'dbml2mmd/parser'
+require 'dbml2mmd/converter'
+require 'dbml2mmd/cli'

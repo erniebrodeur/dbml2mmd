@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Dbml2mmd
+module Dbml2Mmd
   # Converts a Schema object into Mermaid 'erDiagram' syntax.
   class MermaidFormatter
     def format(schema, options = {})
