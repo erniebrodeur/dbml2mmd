@@ -1,0 +1,12 @@
+Table users {
+  id int
+  email varchar
+}
+
+Table posts {
+  id int
+  user_id int
+  content text
+}
+
+Ref: posts.user_id > users.id
