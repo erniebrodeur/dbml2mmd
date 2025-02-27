@@ -2,6 +2,10 @@
 
 A command-line tool to convert DBML (Database Markup Language) files to Mermaid Markdown format for database diagram visualization.
 
+## Documentation
+
+For full documentation, visit [https://erniebrodeur.github.io/dbml2mmd/](https://erniebrodeur.github.io/dbml2mmd/)
+
 ## Overview
 
 dbml2mmd transforms your DBML schema definitions into Mermaid Markdown diagrams, making it easy to include your database schema diagrams in documentation, GitHub READMEs, or any platform that supports Mermaid.
@@ -99,7 +103,7 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at <https://github.com/ernie-brodeur-goxlabs/dbml2mmd>.
+Bug reports and pull requests are welcome on GitHub at <https://github.com/erniebrodeur/dbml2mmd>.
 
 ## License
 
