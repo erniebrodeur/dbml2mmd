@@ -1,28 +1,91 @@
-# Dbml2mmd
+# dbml2mmd
 
-TODO: Delete this and the text below, and describe your gem
+A command-line tool to convert DBML (Database Markup Language) files to Mermaid Markdown format for database diagram visualization.
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/dbml2mmd`. To experiment with that code, run `bin/console` for an interactive prompt.
+## Overview
+
+dbml2mmd transforms your DBML schema definitions into Mermaid Markdown diagrams, making it easy to include your database schema diagrams in documentation, GitHub READMEs, or any platform that supports Mermaid.
 
 ## Installation
 
-TODO: Replace `UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG` with your gem name right after releasing it to RubyGems.org. Please do not do it earlier due to security reasons. Alternatively, replace this section with instructions to install your gem from git if you don't plan to release to RubyGems.org.
-
-Install the gem and add to the application's Gemfile by executing:
-
-```bash
-bundle add UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
-```
-
-If bundler is not being used to manage dependencies, install the gem by executing:
-
-```bash
-gem install UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
-```
-
 ## Usage
 
-TODO: Write usage instructions here
+### Basic Usage
+
+Convert a single DBML file to Mermaid Markdown:
+
+```bash
+dbml2mmd input.dbml
+```
+
+This will create `input.mmd` in the same directory.
+
+### Specify Output File
+
+```bash
+dbml2mmd input.dbml -o output.mmd
+```
+
+### Process Multiple Files
+
+```bash
+dbml2mmd *.dbml
+```
+
+### Watch for Changes
+
+```bash
+dbml2mmd input.dbml --watch
+```
+
+### Help
+
+```bash
+dbml2mmd --help
+```
+
+## Example
+
+### Input (sample.dbml)
+
+```dbml
+Table users {
+  id int [pk]
+  username varchar
+  email varchar
+  created_at timestamp
+}
+
+Table posts {
+  id int [pk]
+  title varchar
+  body text
+  user_id int [ref: > users.id]
+  created_at timestamp
+}
+```
+
+### Output (sample.mmd)
+
+```
+erDiagram
+    users {
+        int id PK
+        varchar username
+        varchar email
+        timestamp created_at
+    }
+    
+    posts {
+        int id PK
+        varchar title
+        text body
+        int user_id FK
+        timestamp created_at
+    }
+    
+    posts ||--o{ users : "user_id"
+```
 
 ## Development
 
@@ -32,4 +95,8 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/ernie-brodeur-goxlabs/dbml2mmd.
+Bug reports and pull requests are welcome on GitHub at <https://github.com/ernie-brodeur-goxlabs/dbml2mmd>.
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
