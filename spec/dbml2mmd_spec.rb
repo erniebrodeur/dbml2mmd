@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-RSpec.describe Dbml2mmd do
+RSpec.describe Dbml2Mmd do
   it 'has a version number' do
-    expect(Dbml2mmd::VERSION).not_to be nil
+    expect(Dbml2Mmd::VERSION).not_to be nil
   end
 
   describe 'integration test' do
@@ -25,14 +25,14 @@ RSpec.describe Dbml2mmd do
 
     it 'converts DBML to Mermaid diagram' do
       # Parse the DBML content
-      parsed = Dbml2mmd::Parser.parse(simple_dbml)
+      parsed = Dbml2Mmd::Parser.parse(simple_dbml)
 
       # Verify parsing result
       expect(parsed[:tables].size).to eq(2)
       expect(parsed[:refs].size).to eq(1)
 
       # Convert to Mermaid
-      converter = Dbml2mmd::Converter.new
+      converter = Dbml2Mmd::Converter.new
       result = converter.convert(simple_dbml)
 
       # Check Mermaid output

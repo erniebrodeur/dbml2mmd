@@ -25,9 +25,12 @@ group :development do
   gem 'ruby-lsp', require: false
 end
 
+group :development, :test do
+end
+
 group :test do
   gem 'rspec', '~> 3.0'
   gem 'rspec-its'
-  gem 'simplecov'
-  gem 'simplecov-lcov'
+  gem 'simplecov', require: false
+  gem 'simplecov-lcov', require: false
 end
