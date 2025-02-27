@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+require 'slop'
 require 'dbml2mmd'
-require 'json'
 
 Dbml2Mmd::CLI.new(ARGV).run

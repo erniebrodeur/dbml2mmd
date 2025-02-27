@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'dbml'
+
 require 'dbml2mmd/version'
 require 'dbml2mmd/parser'
 require 'dbml2mmd/converter'
